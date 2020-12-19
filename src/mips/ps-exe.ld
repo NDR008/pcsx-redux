@@ -30,10 +30,10 @@ OUTPUT_FORMAT("binary")
 EXTERN(_start)
 ENTRY(_start)
 
-TLOAD_ADDR = DEFINED(_TLOAD_ADDR) ? TLOAD_ADDR : 0x80010000;
+TLOAD_ADDR = DEFINED(TLOAD_ADDR) ? TLOAD_ADDR : 0x80010000;
 
 MEMORY {
-    loader      : ORIGIN = 0x8000f800, LENGTH = 2048
+    loader      : ORIGIN = (TLOAD_ADDR - 0x800), LENGTH = 2048
     ram (rwx)   : ORIGIN = 0x80010000, LENGTH = 2M - 0x10000
     dcache      : ORIGIN = 0x1f800000, LENGTH = 0x400
 }
@@ -47,6 +47,8 @@ __dcache_top    = ORIGIN(dcache) + LENGTH(dcache);
 __bss_len       = (__bss_end - __bss_start);
 __ftext_len     = (__ftext_end - __ftext_start);
 __fdata_len     = (__fdata_end - __fdata_start);
+
+__stack_start   = ORIGIN(ram) + LENGTH(ram);
 
 SECTIONS {
     .PSX_EXE_Header : {
@@ -89,6 +91,7 @@ SECTIONS {
         LONG(0);
 
         /* Skip the remaining fields as they're not supported by the BIOS */
+        /* e.g. 2048 header bytes minus whatever we've actually used */
         . = . + 1992;
     } > loader
 
@@ -102,11 +105,11 @@ SECTIONS {
         *(.text.startup .text.startup.*)
         *(.text.hot .text.hot.*)
         *(.text .stub .text.* .gnu.linkonce.t.*)
-        . = ALIGN(16);
-    } > ram
 
-    .fini : {
         . = ALIGN(16);
+        KEEP(*(.init))
+        . = ALIGN(16);
+        KEEP(*(.fini))
     } > ram
 
     . = ALIGN(16);
@@ -117,6 +120,33 @@ SECTIONS {
 
     .rodata : {
         *(.rodata .rodata.* .rdata .rdata.* .gnu.linkonce.r.*)
+        . = ALIGN(16);
+        __preinit_array_start = .;
+        KEEP (*(.preinit_array))
+        __preinit_array_end = .;
+
+        . = ALIGN(16);
+        __init_array_start = .;
+        KEEP (*(SORT(.init_array.*)))
+        KEEP (*(.init_array))
+
+        . = ALIGN(16);
+        KEEP (*crtbegin.o(.ctors))
+        KEEP (*(EXCLUDE_FILE (*crtend.o) .ctors))
+        KEEP (*(SORT(.ctors.*)))
+        KEEP (*crtend.o(.ctors))
+        __init_array_end = .;
+
+        . = ALIGN(16);
+        __fini_array_start = .;
+        KEEP (*(.fini_array))
+        KEEP (*(SORT(.fini_array.*)))
+
+        KEEP (*crtbegin.o(.dtors))
+        KEEP (*(EXCLUDE_FILE (*crtend.o) .dtors))
+        KEEP (*(SORT(.dtors.*)))
+        KEEP (*crtend.o(.dtors))
+        __fini_array_end = .;
         __build_id = .;
         *(.note.gnu.build-id)
         __build_id_end = .;
@@ -133,13 +163,14 @@ SECTIONS {
         *(.data1)
         *(.got.plt)
         *(.got)
+        /* pad file to be a multiple of 2048 bytes.  Needed for loading from CD-ROM. */
+        . = ALIGN(2048);
     } > ram
 
-    . = ALIGN(4);
     __data_end = .;
     __fdata_end = .;
     __bss_start = .;
-    .sbss : {
+    .sbss (NOLOAD) : {
         *(.dynsbss)
         *(.sbss .sbss.* .gnu.linkonce.sb.*)
         *(.scommon)
@@ -151,10 +182,9 @@ SECTIONS {
     . = ALIGN(4);
     __bss_end = .;
 
-    __end = .;
+    __heap_start = .;
 
-    /* pad file to be a multiple of 2048 bytes.  Needed for loading from CD-ROM. */
-    . = ADDR(.text) - 0x800;
+    __end = .;
 
     /DISCARD/ : { *(.MIPS.abiflags) }
 

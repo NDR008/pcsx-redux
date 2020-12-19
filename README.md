@@ -1,8 +1,8 @@
 |Platform|Build status|
 |--------|------------|
-|Windows build|[![Build Status](https://dev.azure.com/grumpycoders/pcsx-redux/_apis/build/status/grumpycoders.pcsx-redux?branchName=master)](https://dev.azure.com/grumpycoders/pcsx-redux/_build/latest?definitionId=1&branchName=master)|
+|Windows build|[![Build Status](https://dev.azure.com/grumpycoders/pcsx-redux/_apis/build/status/grumpycoders.pcsx-redux?branchName=main)](https://dev.azure.com/grumpycoders/pcsx-redux/_build/latest?definitionId=1&branchName=main)|
 |Linux build|[![CircleCI](https://circleci.com/gh/grumpycoders/pcsx-redux.svg?style=svg)](https://circleci.com/gh/grumpycoders/pcsx-redux)|
-|MacOS build|![macOS CI](https://github.com/grumpycoders/pcsx-redux/workflows/macOS%20CI/badge.svg?branch=master)|
+|MacOS build|![macOS CI](https://github.com/grumpycoders/pcsx-redux/workflows/macOS%20CI/badge.svg?branch=main)|
 
 ![Discord](https://img.shields.io/discord/567975889879695361)
 
@@ -18,7 +18,7 @@ This is yet another fork of the Playstation Emulator, PCSX. While the work here 
  - Improve the rendering experience.
 
 ## Where?
-There are currently nightly builds of pcsx-redux for Windows, available here: https://github.com/pcsx-redux/nightlies/releases
+There are currently regular builds of pcsx-redux for Windows, available here: https://install.appcenter.ms/orgs/grumpycoders/apps/pcsx-redux/distribution_groups/public
  
 ## How ?
 The code is meant to be built using very modern compilers. Also it's still fairly experimental, and lots of things can break. If you still want to proceed, here are instructions to build it on Linux, MacOS and Windows.
@@ -30,10 +30,30 @@ The only location for the source is [on github](https://github.com/grumpycoders/
 Install [Visual Studio 2019 Community Edition](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=Community&rel=16). Open the file `vsprojects\pcsx-redux.sln`, select `pcsx-redux -> main`, right click, `Set as Startup Projet`, and hit `F7` to build. The project follows the open-and-build paradigm with no extra step, so no specific dependency ought to be needed, as [NuGet](https://www.nuget.org/) will take care of downloading them automatically for you on the first build.
 
 ### Linux
-Run `./dockermake.sh`. You need [docker](https://en.wikipedia.org/wiki/Docker_(software)) for this to work. You will also need a few libraries on your system for this to work. Check the [Dockerfile](https://github.com/grumpycoders/pcsx-redux/blob/master/Dockerfile#L15) for a list of library packages to install.
+Run `./dockermake.sh`. You need [docker](https://en.wikipedia.org/wiki/Docker_(software)) for this to work. You will also need a few libraries on your system for this to work. Check the [Dockerfile](https://github.com/grumpycoders/pcsx-redux/blob/main/tools/build/Dockerfile#L22) for a list of library packages to install.
+
+#### GNU/Linux Dependencies
+
+ - Debian derivatives :
+
+```bash
+sudo apt-get install -y git make pkg-config clang-10 g++-9 g++-mipsel-linux-gnu libavcodec-dev libavformat-dev libavutil-dev libglfw3-dev libsdl2-dev libswresample-dev libuv1-dev zlib1g-dev
+```
+
+ - Arch derivatives :
+
+```bash
+sudo pacman -S clang git make pkg-config ffmpeg libuv zlib sdl2 glfw-x11 curl xorg-server-xvfb 
+```
+The mipsel environnement can be installed from [AUR](https://wiki.archlinux.org/index.php/Aur) : [cross-mipsel-linux-gnu-binutils](https://aur.archlinux.org/packages/cross-mipsel-linux-gnu-binutils/) and [cross-mipsel-linux-gnu-gcc](https://aur.archlinux.org/packages/cross-mipsel-linux-gnu-gcc/) using your [AURhelper](https://wiki.archlinux.org/index.php/AUR_helpers) of choice:
+
+```bash
+trizen -S cross-mipsel-linux-gnu-binutils mipsel-linux-gnu-gcc 
+```
+You can then just enter the 'pcsx-redux' directory and compile without using docker with `make`.
 
 ### MacOS
-You need MacOS Catalina with the latest XCode to build, as well as a few [homebrew](https://brew.sh/) packages. Run the [brew installation script](https://github.com/grumpycoders/pcsx-redux/blob/master/.github/scripts/install-brew-dependencies.sh) to get all the necessary dependencies. Simply run `make` to build.
+You need MacOS Catalina with the latest XCode to build, as well as a few [homebrew](https://brew.sh/) packages. Run the [brew installation script](https://github.com/grumpycoders/pcsx-redux/blob/main/.github/scripts/install-brew-dependencies.sh) to get all the necessary dependencies. Simply run `make` to build.
 
 ## Who?
 I used to contribute to the PCSX codebase. It is very likely that a sourceforge account of mine still has write access to the old cvs repository for PCSX. A long time ago, I contributed the telnet debugger, and the parallel port support. This means I am fairly familiar with this codebase, and I am also ashamed of the contributions I have done 15+ years ago, as one should.

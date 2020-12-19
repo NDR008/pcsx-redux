@@ -34,7 +34,7 @@ int PCSX::Memory::psxMemInit() {
     g_psxMemRLUT = (uint8_t **)calloc(0x10000, sizeof(void *));
     g_psxMemWLUT = (uint8_t **)calloc(0x10000, sizeof(void *));
 
-    g_psxM = (uint8_t *)calloc(0x00200000, 1);
+    g_psxM = (uint8_t *)calloc(0x00800000, 1);
     g_psxP = (uint8_t *)calloc(0x00010000, 1);
     g_psxH = (uint8_t *)calloc(0x00010000, 1);
     g_psxR = (uint8_t *)calloc(0x00080000, 1);
@@ -69,22 +69,75 @@ int PCSX::Memory::psxMemInit() {
 
     return 0;
 }
+namespace Encoder {
+
+// clang-format off
+enum class Reg {
+    R0, AT, V0, V1, A0, A1, A2, A3,  // 00 to 07
+    T0, T1, T2, T3, T4, T5, T6, T7,  // 08 to 0f
+    S0, S1, S2, S3, S4, S5, S6, S7,  // 10 to 17 
+    T8, T9, K0, K1, GP, SP, S8, RA,  // 18 to 1f
+};
+// clang-format on
+
+constexpr uint32_t lui(Reg reg, uint16_t value) { return (0x3c << 24) | (uint32_t(reg) << 16) | value; }
+constexpr uint32_t addiu(Reg dst, Reg src, uint32_t value) {
+    return (0x24 << 24) | (uint32_t(src) << 21) | (uint32_t(dst) << 16) | value;
+}
+constexpr uint32_t nop() { return 0; }
+constexpr uint32_t sb(Reg val, Reg offreg, uint16_t off) {
+    return (0xa0 << 24) | (uint32_t(offreg) << 21) | (uint32_t(val) << 16) | off;
+}
+constexpr uint32_t sw(Reg val, Reg offreg, uint16_t off) {
+    return (0xac << 24) | (uint32_t(offreg) << 21) | (uint32_t(val) << 16) | off;
+}
+constexpr uint32_t j(uint32_t addr) { return (0x08 << 24) | ((addr >> 2) & 0x03ffffff); }
+
+}  // namespace Encoder
 
 void PCSX::Memory::psxMemReset() {
     const uint32_t bios_size = 0x00080000;
-    memset(g_psxM, 0, 0x00200000);
+    memset(g_psxM, 0, 0x00800000);
     memset(g_psxP, 0, 0x00010000);
     memset(g_psxR, 0, bios_size);
+    static const uint32_t nobios[6] = {
+        Encoder::lui(Encoder::Reg::V0, 0xbfc0),  // v0 = 0xbfc00000
+        Encoder::lui(Encoder::Reg::V1, 0x1f80),  // v1 = 0x1f800000
+        Encoder::addiu(Encoder::Reg::T0, Encoder::Reg::V0, sizeof(nobios)),
+        Encoder::sw(Encoder::Reg::T0, Encoder::Reg::V1, 0x2084),  // display notification
+        Encoder::j(0xbfc00000),
+        Encoder::sb(Encoder::Reg::R0, Encoder::Reg::V1, 0x2081),  // pause
+    };
+
+    int index = 0;
+    for (auto w : nobios) {
+        g_psxR[index++] = w & 0xff;
+        w >>= 8;
+        g_psxR[index++] = w & 0xff;
+        w >>= 8;
+        g_psxR[index++] = w & 0xff;
+        w >>= 8;
+        g_psxR[index++] = w & 0xff;
+        w >>= 8;
+    }
+    strcpy((char *)g_psxR + index, _(R"(
+                   No BIOS loaded, emulation halted.
+
+Set a BIOS file into the configuration, and do a hard reset of the emulator.
+The distributed OpenBIOS.bin file can be an appropriate BIOS replacement.
+)"));
 
     // Load BIOS
     PCSX::u8string biosPath = PCSX::g_emulator->settings.get<PCSX::Emulator::SettingBios>().string();
     File *f = new File(biosPath);
     if (f->failed()) {
-        PCSX::g_system->message(_("Could not open BIOS:\"%s\". Retrying with the OpenBIOS\n"), biosPath.c_str());
+        PCSX::g_system->printf(_("Could not open BIOS:\"%s\". Retrying with the OpenBIOS\n"), biosPath.c_str());
         delete f;
         f = new File("openbios.bin");
         if (f->failed()) {
-            PCSX::g_system->message(_("Could not open OpenBIOS fallback. Things won't work properly\n"));
+            PCSX::g_system->printf(_(
+                "Could not open OpenBIOS fallback. Things won't work properly.\nAdd a valid BIOS in the configuration "
+                "and hard reset.\n"));
         } else {
             g_emulator->settings.get<Emulator::SettingBios>() = "openbios.bin";
         }
@@ -195,8 +248,6 @@ void PCSX::Memory::psxMemShutdown() {
     free(g_psxMemRLUT);
     free(g_psxMemWLUT);
 }
-
-static int m_writeok = 1;
 
 uint8_t PCSX::Memory::psxMemRead8(uint32_t mem) {
     char *p;
@@ -379,9 +430,7 @@ void PCSX::Memory::psxMemWrite32(uint32_t mem, uint32_t value) {
                     case 0x804:
                         if (m_writeok == 0) break;
                         m_writeok = 0;
-                        memset(g_psxMemWLUT + 0x0000, 0, 0x80 * sizeof(void *));
-                        memset(g_psxMemWLUT + 0x8000, 0, 0x80 * sizeof(void *));
-                        memset(g_psxMemWLUT + 0xa000, 0, 0x80 * sizeof(void *));
+                        setLuts();
 
                         PCSX::g_emulator->m_psxCpu->m_psxRegs.ICache_valid = false;
                         break;
@@ -389,9 +438,7 @@ void PCSX::Memory::psxMemWrite32(uint32_t mem, uint32_t value) {
                     case 0x1e988:
                         if (m_writeok == 1) break;
                         m_writeok = 1;
-                        for (i = 0; i < 0x80; i++) g_psxMemWLUT[i + 0x0000] = (uint8_t *)&g_psxM[(i & 0x1f) << 16];
-                        memcpy(g_psxMemWLUT + 0x8000, g_psxMemWLUT, 0x80 * sizeof(void *));
-                        memcpy(g_psxMemWLUT + 0xa000, g_psxMemWLUT, 0x80 * sizeof(void *));
+                        setLuts();
                         break;
                     default:
                         PSXMEM_LOG("unk %8.8lx = %x\n", mem, value);
@@ -418,5 +465,19 @@ void *PCSX::Memory::psxMemPointer(uint32_t mem) {
             return (void *)(p + (mem & 0xffff));
         }
         return NULL;
+    }
+}
+
+void PCSX::Memory::setLuts() {
+    if (m_writeok) {
+        int max = (g_psxH[0x1061] & 0x1) ? 0x80 : 0x20;
+        if (!g_emulator->settings.get<Emulator::Setting8MB>()) max = 0x20;
+        for (int i = 0; i < 0x80; i++) g_psxMemWLUT[i + 0x0000] = (uint8_t *)&g_psxM[(i & (max - 1)) << 16];
+        memcpy(g_psxMemWLUT + 0x8000, g_psxMemWLUT, 0x80 * sizeof(void *));
+        memcpy(g_psxMemWLUT + 0xa000, g_psxMemWLUT, 0x80 * sizeof(void *));
+    } else {
+        memset(g_psxMemWLUT + 0x0000, 0, 0x80 * sizeof(void *));
+        memset(g_psxMemWLUT + 0x8000, 0, 0x80 * sizeof(void *));
+        memset(g_psxMemWLUT + 0xa000, 0, 0x80 * sizeof(void *));
     }
 }

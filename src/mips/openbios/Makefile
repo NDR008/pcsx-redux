@@ -49,6 +49,7 @@ uC-sdk-glue/init.c \
 ../../../third_party/uC-sdk/libc/src/rand.c \
 ../../../third_party/uC-sdk/libc/src/reent.c \
 ../../../third_party/uC-sdk/libc/src/stdio.c \
+../../../third_party/uC-sdk/libc/src/string.c \
 ../../../third_party/uC-sdk/libc/src/strto.c \
 ../../../third_party/uC-sdk/libc/src/unistd.c \
 ../../../third_party/uC-sdk/libc/src/xprintf.c \
@@ -71,9 +72,18 @@ CPPFLAGS += -I../../../third_party/uC-sdk/libc/include
 CPPFLAGS += -I../../../third_party/uC-sdk/os/include
 CPPFLAGS += -IuC-sdk-glue
 
+ifneq ($(EMBED_PSEXE),)
+CPPFLAGS += -DOPENBIOS_USE_EMBEDDED_PSEXE
+SRCS += ./psexe_data.o
+endif
+
 include ../common.mk
 
 ../shell/shell_data.o: shell
+
+./psexe_data.o: $(EMBED_PSEXE)
+	cp $(EMBED_PSEXE) psexe.bin
+	$(PREFIX)-objcopy -I binary --rename-section .data=.rodata,alloc,load,readonly,data,contents -O elf32-tradlittlemips -B mips psexe.bin psexe_data.o
 
 shell:
 	$(MAKE) -C ../shell shell_data.o

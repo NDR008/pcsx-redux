@@ -26,11 +26,10 @@ CPPFLAGS += -g
 CPPFLAGS += -DIMGUI_IMPL_OPENGL_LOADER_GL3W
 
 CPPFLAGS_Release += -O3
-
 CPPFLAGS_Debug += -O0
-
 CPPFLAGS_Coverage += -O0
 CPPFLAGS_Coverage += -fprofile-instr-generate -fcoverage-mapping
+CPPFLAGS_asan += -O1 -fsanitize=address -fno-omit-frame-pointer
 
 ifeq ($(UNAME_S),Darwin)
 	CPPFLAGS += -mmacosx-version-min=10.15
@@ -51,6 +50,7 @@ LDFLAGS += -ldl
 LDFLAGS += -g
 
 LDFLAGS_Coverage += -fprofile-instr-generate -fcoverage-mapping
+LDFLAGS_asan += -fsanitize=address
 
 CPPFLAGS += $(CPPFLAGS_$(BUILD))
 LDFLAGS += $(LDFLAGS_$(BUILD))
@@ -71,7 +71,7 @@ OBJECTS := $(patsubst %.c,%.o,$(filter %.c,$(SRCS)))
 OBJECTS += $(patsubst %.cc,%.o,$(filter %.cc,$(SRCS)))
 OBJECTS += $(patsubst %.cpp,%.o,$(filter %.cpp,$(SRCS)))
 
-NONMAIN_OBJECTS := $(filter-out src/main/main.o,$(OBJECTS))
+NONMAIN_OBJECTS := $(filter-out src/main/mainthunk.o,$(OBJECTS))
 
 TESTS_SRC := $(call rwildcard,tests/,*.cc)
 TESTS := $(patsubst %.cc,%,$(TESTS_SRC))
@@ -124,6 +124,9 @@ pcsx-redux-tests: $(foreach t,$(TESTS),$(t).o) $(NONMAIN_OBJECTS) gtest-all.o
 
 runtests: pcsx-redux-tests
 	./pcsx-redux-tests
+
+psyq-obj-parser: $(NONMAIN_OBJECTS) tools/psyq-obj-parser/psyq-obj-parser.cc
+	$(LD) -o $@ $(NONMAIN_OBJECTS) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) tools/psyq-obj-parser/psyq-obj-parser.cc -Ithird_party/ELFIO
 
 .PHONY: all dep clean gitclean regen-i18n runtests
 

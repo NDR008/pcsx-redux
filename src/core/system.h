@@ -27,6 +27,7 @@
 #include <string>
 #include <vector>
 
+#include "support/djbhash.h"
 #include "support/eventbus.h"
 
 namespace PCSX {
@@ -73,6 +74,7 @@ class System {
     virtual void runGui() = 0;
     // Close mem and plugins
     virtual void close() = 0;
+    virtual void purgeAllEvents() = 0;
     bool running() { return m_running; }
     bool quitting() { return m_quitting; }
     int exitCode() { return m_exitCode; }
@@ -96,28 +98,18 @@ class System {
         m_running = true;
         m_eventBus->signal(Events::ExecutionFlow::Run{});
     }
+    virtual void testQuit(int code) = 0;
     void quit(int code = 0) {
         m_quitting = true;
         pause();
         m_exitCode = code;
         m_eventBus->signal(Events::Quitting{});
+        purgeAllEvents();
     }
 
     std::shared_ptr<EventBus::EventBus> m_eventBus = std::make_shared<EventBus::EventBus>();
 
-  private:
-    static inline constexpr uint64_t djbProcess(uint64_t hash, const char str[], size_t n) {
-        return n ? djbProcess(((hash << 5) + hash) ^ str[0], str + 1, n - 1) : hash;
-    }
-
-  public:
     void setBinDir(std::filesystem::path path) { m_binDir = path; }
-    template <size_t S>
-    static inline constexpr uint64_t ctHash(const char (&str)[S]) {
-        return djbProcess(5381, str, S - 1);
-    }
-    static inline constexpr uint64_t hash(const char *str, size_t n) { return djbProcess(5381, str, n); }
-    static inline uint64_t hash(const std::string &str) { return djbProcess(5381, str.c_str(), str.length()); }
 
     const char *getStr(uint64_t hash, const char *str) {
         auto ret = m_i18n.find(hash);
@@ -173,4 +165,4 @@ extern System *g_system;
 
 }  // namespace PCSX
 
-#define _(str) PCSX::g_system->getStr(PCSX::System::ctHash(str), str)
+#define _(str) PCSX::g_system->getStr(PCSX::djbHash::ctHash(str), str)

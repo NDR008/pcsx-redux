@@ -324,7 +324,7 @@ struct FixedBytes {
     constexpr void deserialize(InSlice *slice, unsigned) {
         uint64_t size = slice->getVarInt();
         if (size > amount) throw OutOfBoundError();
-        allocate();
+        reset();
         slice->getBytes(value, size);
     }
     static constexpr char const typeName[] = "bytes";
@@ -336,7 +336,13 @@ struct FixedBytes {
         allocate();
         memcpy(value, src, amount);
     }
-    constexpr void copyTo(uint8_t *dst) const { memcpy(dst, value, amount); }
+    constexpr void copyTo(uint8_t *dst) const {
+        if (!value) {
+            memset(dst, 0, amount);
+        } else {
+            memcpy(dst, value, amount);
+        }
+    }
     typedef uint8_t *type;
     constexpr void reset() {
         allocate();

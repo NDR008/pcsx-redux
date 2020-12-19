@@ -25,6 +25,7 @@
 
 #include "core/system.h"
 #include "flags.h"
+#include "fmt/printf.h"
 #include "gui/widgets/assembly.h"
 #include "gui/widgets/breakpoints.h"
 #include "gui/widgets/dwarf.h"
@@ -66,9 +67,35 @@ class GUI final {
         va_end(args);
     }
     void addLog(const char *fmt, va_list args) { m_log.addLog(fmt, args); }
+    class Notifier {
+      public:
+        Notifier(std::function<const char *()> title) : m_title(title) {}
+        void notify(const std::string &message) {
+            m_message = message;
+            ImGui::OpenPopup(m_title());
+        }
+        bool draw() {
+            bool done = false;
+            if (ImGui::BeginPopupModal(m_title(), NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+                ImGui::TextUnformatted(m_message.c_str());
+                if (ImGui::Button(_("Ok"), ImVec2(120, 0))) {
+                    ImGui::CloseCurrentPopup();
+                    done = true;
+                }
+                ImGui::EndPopup();
+            }
+            return done;
+        }
+
+      private:
+        const std::function<const char *()> m_title;
+        std::string m_message;
+    };
     void addNotification(const char *fmt, va_list args) {
-        // TODO
-        // SDL_TriggerBreakpoint();
+        char notification[1024];
+        vsnprintf(notification, 1023, fmt, args);
+        notification[1023] = 0;
+        m_notifier.notify(notification);
     }
 
     void magicOpen(const char *path);
@@ -97,6 +124,7 @@ class GUI final {
 
   private:
     GLFWwindow *m_window = nullptr;
+    bool m_hasCoreProfile = false;
     int &m_glfwPosX = settings.get<WindowPosX>().value;
     int &m_glfwPosY = settings.get<WindowPosY>().value;
     int &m_glfwSizeX = settings.get<WindowSizeX>().value;
@@ -123,10 +151,13 @@ class GUI final {
     typedef Setting<int, TYPESTRING("WindowPosY"), 0> WindowPosY;
     typedef Setting<int, TYPESTRING("WindowSizeX"), 1280> WindowSizeX;
     typedef Setting<int, TYPESTRING("WindowSizeY"), 800> WindowSizeY;
-    Settings<Fullscreen, FullscreenRender, ShowMenu, ShowLog, WindowPosX, WindowPosY, WindowSizeX, WindowSizeY>
+    typedef Setting<int, TYPESTRING("IdleSwapInterval"), 1> IdleSwapInterval;
+    Settings<Fullscreen, FullscreenRender, ShowMenu, ShowLog, WindowPosX, WindowPosY, WindowSizeX, WindowSizeY,
+             IdleSwapInterval>
         settings;
     bool &m_fullscreenRender = {settings.get<FullscreenRender>().value};
     bool &m_showMenu = {settings.get<ShowMenu>().value};
+    int &m_idleSwapInterval = {settings.get<IdleSwapInterval>().value};
     bool m_showDemo = false;
     bool m_showAbout = false;
     bool m_showInterruptsScaler = false;
@@ -178,6 +209,7 @@ class GUI final {
     void shellReached();
 
     PCSX::u8string m_exeToLoad;
+    Notifier m_notifier = {[]() { return _("Notification"); }};
 };
 
 }  // namespace PCSX

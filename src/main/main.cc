@@ -162,10 +162,22 @@ class SystemImpl : public PCSX::System {
         // emulator is requesting a shutdown of the emulation
     }
 
+    virtual void purgeAllEvents() final { PCSX::g_emulator->m_loop->run(); }
+
+    virtual void testQuit(int code) final {
+        if (m_args.get<bool>("testmode")) {
+            quit(code);
+        } else {
+            printf("PSX software requested an exit with code %i\n", code);
+            pause();
+        }
+    }
+
     std::string m_putcharBuffer;
     FILE *m_logfile = nullptr;
 
   public:
+    SystemImpl(const flags::args &args) : m_args(args) {}
     ~SystemImpl() {
         if (m_logfile) fclose(m_logfile);
     }
@@ -175,11 +187,12 @@ class SystemImpl : public PCSX::System {
     }
 
     bool m_enableStdout = false;
+    const flags::args &m_args;
 };
 
 using json = nlohmann::json;
 
-int main(int argc, char **argv) {
+int pcsxMain(int argc, char **argv) {
     const flags::args args(argc, argv);
 
     if (args.get<bool>("dumpproto")) {
@@ -187,9 +200,10 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    SystemImpl *system = new SystemImpl;
+    SystemImpl *system = new SystemImpl(args);
     PCSX::g_system = system;
-    PCSX::Emulator::createEmulator();
+    PCSX::Emulator *emulator = new PCSX::Emulator();
+    PCSX::g_emulator = emulator;
     std::filesystem::path self = argv[0];
     std::filesystem::path binDir = self.parent_path();
     system->setBinDir(binDir);
@@ -201,48 +215,55 @@ int main(int argc, char **argv) {
 
     s_gui = new PCSX::GUI(args);
     s_gui->init();
-    system->m_enableStdout = PCSX::g_emulator->settings.get<PCSX::Emulator::SettingStdout>();
-    const auto &logfile = PCSX::g_emulator->settings.get<PCSX::Emulator::SettingLogfile>().string();
+    system->m_enableStdout = emulator->settings.get<PCSX::Emulator::SettingStdout>();
+    if (args.get<bool>("stdout")) system->m_enableStdout = true;
+    const auto &logfileArgOpt = args.get<std::string>("logfile");
+    const PCSX::u8string logfileArg = MAKEU8(logfileArgOpt.has_value() ? logfileArgOpt->c_str() : "");
+    const PCSX::u8string &logfileSet = emulator->settings.get<PCSX::Emulator::SettingLogfile>().string();
+    const auto &logfile = logfileArg.empty() ? logfileSet : logfileArg;
     if (!logfile.empty()) system->useLogfile(logfile);
 
-    system->activateLocale(PCSX::g_emulator->settings.get<PCSX::Emulator::SettingLocale>());
+    system->activateLocale(emulator->settings.get<PCSX::Emulator::SettingLocale>());
 
     LoadPlugins();
-    PCSX::g_emulator->m_gpu->open(s_gui);
-    PCSX::g_emulator->m_spu->open();
+    emulator->m_gpu->open(s_gui);
+    emulator->m_spu->open();
 
-    PCSX::g_emulator->EmuInit();
-    PCSX::g_emulator->EmuReset();
+    emulator->EmuInit();
+    emulator->EmuReset();
 
     std::string iso = args.get<std::string>("iso", "");
     if (!iso.empty()) SetIsoFile(iso.c_str());
-    PCSX::g_emulator->m_cdrom->m_iso.open();
+    emulator->m_cdrom->m_iso.open();
     CheckCdrom();
 
-    if (args.get<bool>("run", false)) PCSX::g_system->start();
+    if (args.get<bool>("run", false)) system->start();
 
-    while (!PCSX::g_system->quitting()) {
-        if (PCSX::g_system->running()) {
-            PCSX::g_emulator->m_psxCpu->Execute();
+    while (!system->quitting()) {
+        if (system->running()) {
+            emulator->m_psxCpu->Execute();
         } else {
             s_gui->update();
         }
     }
 
-    PCSX::g_emulator->m_spu->close();
-    PCSX::g_emulator->m_gpu->close();
-    PCSX::g_emulator->m_cdrom->m_iso.close();
+    emulator->m_spu->close();
+    emulator->m_gpu->close();
+    emulator->m_cdrom->m_iso.close();
 
-    PCSX::g_emulator->m_psxCpu->psxShutdown();
-    PCSX::g_emulator->m_spu->shutdown();
-    PCSX::g_emulator->m_gpu->shutdown();
-    PCSX::g_emulator->m_cdrom->m_iso.shutdown();
-
+    emulator->m_psxCpu->psxShutdown();
+    emulator->m_spu->shutdown();
+    emulator->m_gpu->shutdown();
+    emulator->m_cdrom->m_iso.shutdown();
     s_gui->close();
-
     delete s_gui;
-    int exitCode = PCSX::g_system->exitCode();
-    delete PCSX::g_system;
+
+    delete emulator;
+    PCSX::g_emulator = nullptr;
+
+    int exitCode = system->exitCode();
+    delete system;
+    PCSX::g_system = nullptr;
 
     return exitCode;
 }

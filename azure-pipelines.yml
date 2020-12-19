@@ -1,5 +1,5 @@
 trigger:
-- master
+- main
 
 pool:
   vmImage: 'windows-2019'
@@ -9,7 +9,9 @@ variables:
   buildConfiguration: 'Release'
 
 steps:
-- task: NuGetToolInstaller@0
+- checkout: self
+  submodules: recursive
+- task: NuGetToolInstaller@1
 
 - task: NuGetCommand@2
   inputs:
@@ -25,7 +27,7 @@ steps:
   inputs:
     archiveFilePatterns: 'GoogleTestAdapter-0.17.1.zip'
     destinationFolder: 'GoogleTestAdapter'
-    cleanDestinationFolder: true'
+    cleanDestinationFolder: true
 
 - task: CopyFiles@2
   inputs:
@@ -37,22 +39,8 @@ steps:
 - task: VSBuild@1
   inputs:
     solution: '$(solution)'
-    platform: 'x86'
-    maximumCpuCount: true
-    configuration: '$(buildConfiguration)'
-
-- task: CopyFiles@2
-  inputs:
-    Contents: |
-      vsprojects/Release/pcsx-redux.exe
-      vsprojects/Release/*.dll
-    TargetFolder: '$(build.artifactStagingDirectory)/binaries'
-
-- task: VSBuild@1
-  inputs:
-    solution: '$(solution)'
     platform: 'x64'
-    maximumCpuCount: true
+    maximumCpuCount: false
     configuration: '$(buildConfiguration)'
 
 - task: CopyFiles@2
@@ -67,7 +55,9 @@ steps:
     testSelector: 'testAssemblies'
     testAssemblyVer2: |
       **\*.exe
+      !**\pcsxrunner.exe
       !**\pcsx-redux.exe
+      !**\psyq-obj-parser.exe
     searchFolder: '$(System.DefaultWorkingDirectory)'
     pathtoCustomTestAdapters: 'GoogleTestAdapter'
     codeCoverageEnabled: True
